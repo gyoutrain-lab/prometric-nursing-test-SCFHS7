@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Adult Nursing CBT – 120 Items (SCFHS Style)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{font-family:Arial,Helvetica,sans-serif;background:#eef1f4;margin:0}
+.container{max-width:1000px;margin:auto;background:#fff;padding:20px}
+.question{margin-bottom:20px}
+.options label{display:block;margin:6px 0;cursor:pointer}
+button{padding:10px 16px;font-size:16px}
+.hidden{display:none}
+.badge{padding:4px 8px;font-size:12px;border-radius:4px}
+.fail{background:#f8d7da;color:#721c24}
+.warn{background:#fff3cd;color:#856404}
+.admin{margin-top:30px;background:#111;color:#fff;padding:15px}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #555;padding:6px;text-align:center}
+input[type=text]{padding:6px;width:320px}
+#timer{font-weight:bold;color:#b30000}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>Adult Nursing Examination – 120 Items</h1>
+
+<label><strong>Candidate Name:</strong></label><br>
+<input type="text" id="candName" placeholder="Enter full name"><br><br>
+
+<p>Time Remaining: <span id="timer">120:00</span></p>
+<p>Violations: <span id="violations">0</span></p>
+
+<div id="exam"></div>
+
+<button onclick="nextQuestion()">Next</button>
+
+<div id="result" class="hidden">
+<h2>Result</h2>
+<p>Name: <span id="resName"></span></p>
+<p>Score: <span id="score"></span>%</p>
+<p>Status: <strong id="status"></strong></p>
+<p>Violations: <span id="vcount"></span></p>
+</div>
+
+<div class="admin hidden" id="admin">
+<h2>Admin / Proctor Dashboard</h2>
+<table>
+<thead>
+<tr><th>Name</th><th>Score</th><th>Status</th><th>Violations</th></tr>
+</thead>
+<tbody id="adminTable"></tbody>
+</table>
+<button onclick="exportJSON()">Export JSON</button>
+<button onclick="exportCSV()">Export CSV</button>
+</div>
+
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const TOTAL_TIME = 120 * 60; // 120 minutes
+const MAX_VIOLATIONS = 3;
+const PASS_MARK = 60;
+
+/* ================= PROCTORING ================= */
+let violationCount = 0;
+let violationLog = [];
+
+function logViolation(reason){
+  violationCount++;
+  document.getElementById("violations").innerText = violationCount;
+  violationLog.push(reason + " @ " + new Date().toISOString());
+  if(violationCount >= MAX_VIOLATIONS){
+    endExam(true);
+  }
+}
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) logViolation("Tab switch / visibility change");
+});
+
+window.addEventListener("blur",()=>{
+  logViolation("Window lost focus");
+});
+
+/* ================= TIMER ================= */
+let timeLeft = TOTAL_TIME;
+let timerInt = setInterval(()=>{
+  timeLeft--;
+  const m = Math.floor(timeLeft/60);
+  const s = timeLeft%60;
+  document.getElementById("timer").innerText =
+    `${m}:${s.toString().padStart(2,"0")}`;
+  if(timeLeft<=0){
+    clearInterval(timerInt);
+    endExam(false);
+  }
+},1000);
+
+/* ================= QUESTION BANK ================= */
+/*
+IMPORTANT:
+Paste your FULL question arrays here:
+- set1Questions
+- set2Questions
+- set3Questions
+(Each item: {q:"", o:[...], a:0})
+*/
+
+const set1Questions = [
+  /* === PASTE SET 1 QUESTIONS HERE === */
+];
+
+const set2Questions = [
+  /* === PASTE SET 2 QUESTIONS HERE === */
+];
+
+const set3Questions = [
+  /* === PASTE SET 3 QUESTIONS HERE === */
+];
+
+const questions = [...set1Questions, ...set2Questions, ...set3Questions];
+
+/* ================= ENGINE ================= */
+let currentIndex = 0;
+let answers = [];
+let candidateName = "";
+
+function renderQuestion(){
+  const q = questions[currentIndex];
+  const e = document.getElementById("exam");
+  e.innerHTML = `
+    <div class="question">
+      <p><strong>Q ${currentIndex+1} / ${questions.length}</strong></p>
+      <p>${q.q}</p>
+      <div class="options">
+        ${q.o.map((x,i)=>`
+          <label>
+            <input type="radio" name="opt" value="${i}"> ${x}
+          </label>`).join("")}
+      </div>
+    </div>`;
+}
+
+function nextQuestion(){
+  const sel = document.querySelector("input[name='opt']:checked");
+  if(!sel){ alert("Select an option"); return; }
+  answers[currentIndex] = Number(sel.value);
+  currentIndex++;
+  if(currentIndex >= questions.length){
+    endExam(false);
+  } else {
+    renderQuestion();
+  }
+}
+
+function endExam(forceFail){
+  clearInterval(timerInt);
+  document.getElementById("exam").classList.add("hidden");
+  document.querySelector("button").classList.add("hidden");
+
+  let correct = 0;
+  questions.forEach((q,i)=>{
+    if(answers[i] === q.a) correct++;
+  });
+
+  const score = forceFail ? 0 : Math.round((correct/questions.length)*100);
+  const pass = score >= PASS_MARK && violationCount < MAX_VIOLATIONS;
+
+  document.getElementById("resName").innerText = candidateName;
+  document.getElementById("score").innerText = score;
+  document.getElementById("status").innerText = pass ? "PASS" : "FAIL";
+  document.getElementById("vcount").innerText = violationCount;
+  document.getElementById("result").classList.remove("hidden");
+  document.getElementById("admin").classList.remove("hidden");
+
+  document.getElementById("adminTable").innerHTML = `
+    <tr>
+      <td>${candidateName}</td>
+      <td>${score}%</td>
+      <td>${pass?"PASS":"FAIL"}</td>
+      <td>${violationCount}</td>
+    </tr>`;
+}
+
+/* ================= EXPORT ================= */
+function exportJSON(){
+  const data={
+    name:candidateName,
+    total:questions.length,
+    violations:violationLog
+  };
+  download("exam_report.json",JSON.stringify(data,null,2));
+}
+function exportCSV(){
+  const csv=`Name,Score,Violations\n${candidateName},${document.getElementById("score").innerText},${violationCount}`;
+  download("exam_report.csv",csv);
+}
+function download(f,t){
+  const a=document.createElement("a");
+  a.href="data:text/plain;charset=utf-8,"+encodeURIComponent(t);
+  a.download=f;a.click();
+}
+
+/* ================= START ================= */
+window.onload=()=>{
+  candidateName = document.getElementById("candName").value.trim();
+  if(!candidateName){
+    candidateName = "Candidate";
+  }
+  renderQuestion();
+};
+</script>
+</body>
+</html>
